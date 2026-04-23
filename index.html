@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Radio Player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
+
+<style>
+html,body{margin:0;padding:0;background:transparent;font-family:'Montserrat',sans-serif}
+body.dark{color:#000} body.light{color:#fff}
+
+/* PLAYER */
+.player{
+  position:relative;
+  max-width:1200px;
+  margin:40px auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:50px 60px;
+  border-radius:30px;
+  backdrop-filter:blur(25px)
+}
+body.dark .player{background:rgba(255,255,255,0.6)}
+body.light .player{background:rgba(0,0,0,0.35)}
+
+.logo img{max-height:80px;margin-bottom:30px}
+.on-air{font-size:14px;opacity:.7}
+.track{font-size:48px;font-weight:800}
+.artist{font-size:20px;opacity:.85;margin-bottom:30px}
+
+/* CONTROLS */
+.play-row{display:flex;align-items:center;gap:15px}
+
+.play-btn{
+  padding:14px 32px;
+  border-radius:999px;
+  border:none;
+  font-weight:600;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden
+}
+body.dark .play-btn{background:#000;color:#fff}
+body.light .play-btn{background:#fff;color:#000}
+
+.mute-btn{
+  width:42px;height:42px;border-radius:50%;
+  border:none;display:flex;align-items:center;justify-content:center;cursor:pointer
+}
+body.dark .mute-btn{background:#000;color:#fff}
+body.light .mute-btn{background:#fff;color:#000}
+
+/* VOLUME */
+.volume input{
+  width:140px;
+  appearance:none;
+  height:6px;
+  border-radius:10px;
+  cursor:pointer
+}
+body.dark .volume input{background:rgba(0,0,0,.2)}
+body.light .volume input{background:rgba(255,255,255,.3)}
+
+.volume input::-webkit-slider-thumb,
+.volume input::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;
+  background:#ff3b3b!important
+}
+
+/* ART */
+.cover{
+  width:340px;height:340px;
+  border-radius:18px;
+  background-size:cover;
+  background-position:center;
+  position:relative;
+  overflow:hidden
+}
+
+.cover-info{
+  position:absolute;
+  bottom:0;left:0;right:0;
+  padding:15px;
+  color:#fff;
+  background:linear-gradient(to top,rgba(0,0,0,.6),transparent)
+}
+
+/* POWERED */
+.powered-by{
+  position:absolute;
+  bottom:10px;
+  right:20px;
+  font-size:12px
+}
+.powered-by a{color:currentColor;text-decoration:underline}
+
+/* RIPPLE */
+.ripple{
+  position:absolute;
+  border-radius:50%;
+  transform:scale(0);
+  animation:ripple .6s linear;
+  pointer-events:none
+}
+@keyframes ripple{to{transform:scale(4);opacity:0}}
+
+/* MOBILE */
+@media(max-width:900px){
+  .player{flex-direction:column;text-align:center;padding:30px 20px}
+  .logo{order:1}
+  .play-row{order:2;justify-content:center}
+  .cover{order:3;margin:25px 0;width:260px;height:260px}
+  .track{order:4;font-size:28px}
+  .artist{order:5}
+  .mute-btn,.volume{display:none!important}
+  .play-btn{padding:18px 40px;font-size:18px}
+  .powered-by{position:static;margin-top:20px}
+}
+</style>
+</head>
+
+<body>
+
+<div id="app"></div>
+
+<script>
+const params=new URLSearchParams(window.location.search);
+
+const streamURL=params.get("stream");
+const metaURL=params.get("meta");
+const logoURL=params.get("logo");
+const theme=params.get("theme")||"dark";
+
+const LICENSE_URL="https://raw.githubusercontent.com/broadcast24-7/broadcast24-7-ultra-player/main/licenses.json";
+
+/* LICENSE */
+async function validateLicense(){
+  const key=params.get("license");
+  if(!key)return false;
+
+  try{
+    const res=await fetch(LICENSE_URL+"?t="+Date.now());
+    const data=await res.json();
+
+    if(!data[key])return false;
+
+    const expiry=new Date(data[key]);
+    const today=new Date();
+
+    expiry.setHours(23,59,59,999);
+    today.setHours(0,0,0,0);
+
+    return expiry>=today;
+
+  }catch{return false}
+}
+
+/* INIT */
+(async()=>{
+  const valid=await validateLicense();
+
+  if(!valid){
+    document.body.innerHTML=`
+      <div style="
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        height:100vh;
+        background:#000;
+        color:#fff;
+        font-family:'Montserrat',sans-serif;
+        text-align:center;
+        padding:20px
+      ">
+        <div>
+          <h2 style="margin-bottom:10px">License Key Invalid</h2>
+          <p style="opacity:.8;margin-bottom:15px">Please visit</p>
+          <a href="https://broadcast247.co.uk" target="_blank" style="color:#4da3ff;text-decoration:underline">
+            broadcast247.co.uk
+          </a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  initPlayer();
+})();
+
+/* PLAYER */
+function initPlayer(){
+
+document.body.classList.add(theme);
+
+document.getElementById("app").innerHTML=`
+<div class="player">
+  <div>
+    <div id="logo" class="logo"></div>
+
+    <div class="on-air">ON AIR NOW</div>
+    <div id="track" class="track">Loading...</div>
+    <div id="artist" class="artist">Please wait</div>
+
+    <div class="play-row">
+      <button id="playBtn" class="play-btn">Play</button>
+
+     <button id="muteBtn" class="mute-btn">
+
+  <!-- UNMUTED -->
+  <svg id="icon-unmuted" viewBox="0 0 24 24" width="20">
+    <path fill="currentColor"
+      d="M3 9v6h4l5 5V4L7 9H3zm13 3c0-1.77-1-3.29-2.5-4.03v8.05c1.5-.73 2.5-2.25 2.5-4.02z"/>
+  </svg>
+
+  <!-- MUTED -->
+  <svg id="icon-muted" viewBox="0 0 24 24" width="20" style="display:none;">
+    <path fill="currentColor"
+      d="M3 9v6h4l5 5V4L7 9H3zm16.5 3c0 .77-.2 1.5-.55 2.13l1.46 1.46A5.97 5.97 0 0018.5 12c0-1.77-1-3.29-2.5-4.03v1.67zM19 3l-2 2-2-2-1.5 1.5 2 2-2 2L15 10l2-2 2 2L20.5 8l-2-2 2-2z"/>
+  </svg>
+
+</button>
+
+      <div class="volume">
+        <input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="1">
+      </div>
+    </div>
+  </div>
+
+  <div id="cover" class="cover">
+    <div class="cover-info">
+      <div id="coverTrack"></div>
+      <div id="coverArtist"></div>
+    </div>
+  </div>
+
+  <div class="powered-by">
+    <a href="https://broadcast247.co.uk" target="_blank">Powered By Broadcast 24/7</a>
+  </div>
+</div>
+
+<audio id="audio"></audio>
+`;
+
+/* LOGO */
+if(logoURL){
+  document.getElementById("logo").innerHTML=`<img src="${logoURL}">`;
+}
+
+const audio=document.getElementById("audio");
+
+/* PLAY */
+const playBtn=document.getElementById("playBtn");
+
+playBtn.onclick=async(e)=>{
+  ripple(e,playBtn);
+
+  if(audio.paused){
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    await new Promise(r=>setTimeout(r,150));
+    audio.src=streamURL+"?t="+Date.now();
+    audio.load();
+    await audio.play();
+    playBtn.textContent="Stop";
+  }else{
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    playBtn.textContent="Play";
+  }
+};
+
+/* AUTO RECONNECT */
+audio.addEventListener("error",()=>{
+  if(!audio.paused){
+    setTimeout(()=>{
+      audio.src=streamURL+"?t="+Date.now();
+      audio.load();
+      audio.play().catch(()=>{});
+    },3000);
+  }
+});
+
+/* MUTE */
+const muteBtn=document.getElementById("muteBtn");
+const iconMuted=document.getElementById("icon-muted");
+const iconUnmuted=document.getElementById("icon-unmuted");
+
+muteBtn.onclick=()=>{
+  audio.muted=!audio.muted;
+  iconMuted.style.display=audio.muted?"block":"none";
+  iconUnmuted.style.display=audio.muted?"none":"block";
+};
+
+/* VOLUME */
+const volumeSlider=document.getElementById("volumeSlider");
+volumeSlider.oninput=()=>audio.volume=volumeSlider.value;
+
+/* RIPPLE */
+function ripple(e,el){
+  const span=document.createElement("span");
+  span.className="ripple";
+  const rect=el.getBoundingClientRect();
+  const size=Math.max(rect.width,rect.height);
+  span.style.width=span.style.height=size+"px";
+  span.style.left=(e.clientX-rect.left-size/2)+"px";
+  span.style.top=(e.clientY-rect.top-size/2)+"px";
+  el.appendChild(span);
+  setTimeout(()=>span.remove(),600);
+}
+
+/* MEDIA SESSION */
+function updateMediaSession(track,artist,art){
+  if("mediaSession" in navigator){
+    navigator.mediaSession.metadata=new MediaMetadata({
+      title:track,
+      artist:artist,
+      artwork:[{src:art,sizes:"512x512",type:"image/png"}]
+    });
+  }
+}
+
+const FALLBACK="https://i.ibb.co/8DwvZS9Z/ON-AIR-Fallback-Album-Art.png";
+
+function setFallback(){
+  document.getElementById("cover").style.backgroundImage=`url(${FALLBACK})`;
+  updateMediaSession("Live Stream","",FALLBACK);
+}
+
+/* 🔥 DEEP ARTWORK */
+async function fetchArtwork(artist, track){
+
+  updateMediaSession(track, artist, FALLBACK);
+
+  try{
+
+    const clean=str=>str.toLowerCase()
+      .replace(/\(.*?\)|\[.*?\]/g,"")
+      .replace(/[^a-z0-9 ]/g,"")
+      .trim();
+
+    const cleanArtist=clean(artist);
+    const cleanTrack=clean(track);
+
+    const queries=[`${artist} ${track}`,track,artist];
+
+    for(let q of queries){
+
+      const res=await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=10`);
+      const data=await res.json();
+
+      let best=null,bestScore=0;
+
+      data.results.forEach(item=>{
+        let score=0;
+
+        const a=clean(item.artistName||"");
+        const t=clean(item.trackName||"");
+
+        if(a.includes(cleanArtist))score+=2;
+        if(t.includes(cleanTrack))score+=2;
+        if(cleanArtist.includes(a))score+=1;
+        if(cleanTrack.includes(t))score+=1;
+
+        if(score>bestScore){
+          bestScore=score;
+          best=item;
+        }
+      });
+
+      if(best && bestScore>=2){
+        const art=best.artworkUrl100.replace("100x100","600x600");
+        document.getElementById("cover").style.backgroundImage=`url(${art})`;
+        updateMediaSession(track,artist,art);
+        return;
+      }
+    }
+
+    setFallback();
+
+  }catch{
+    setFallback();
+  }
+}
+
+/* META */
+async function fetchMeta(){
+  try{
+    const res=await fetch(metaURL);
+    const data=await res.json();
+
+    const song=data?.icestats?.source?.title||"Live Stream";
+
+    let artist="",track=song;
+
+    if(song.includes(" - ")){
+      [artist,track]=song.split(" - ");
+    }
+
+    track=track.replace(/\(.*?\)/g,"").trim();
+    artist=artist.trim();
+
+    document.getElementById("track").textContent=track;
+    document.getElementById("artist").textContent=artist;
+    document.getElementById("coverTrack").textContent=track;
+    document.getElementById("coverArtist").textContent=artist;
+
+    fetchArtwork(artist,track);
+
+  }catch{
+    setFallback();
+  }
+}
+
+setFallback();
+fetchMeta();
+setInterval(fetchMeta,10000);
+
+}
+</script>
+
+</body>
+</html>
