@@ -41,10 +41,42 @@ body.light .player{background:rgba(0,0,0,0.35)}
   font-weight:600;
   cursor:pointer;
   position:relative;
-  overflow:hidden
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
 }
 body.dark .play-btn{background:#000;color:#fff}
 body.light .play-btn{background:#fff;color:#000}
+
+/* 🔥 LOADING SPINNER */
+.play-btn.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.play-btn .spinner {
+  display: none;
+  width: 18px;
+  height: 18px;
+  border: 3px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.play-btn.loading .spinner {
+  display: inline-block;
+}
+
+.play-btn.loading .label {
+  display: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 .mute-btn{
   width:42px;height:42px;border-radius:50%;
@@ -204,7 +236,10 @@ document.getElementById("app").innerHTML=`
     <div id="artist" class="artist">Please wait</div>
 
     <div class="play-row">
-      <button id="playBtn" class="play-btn">Play</button>
+      <button id="playBtn" class="play-btn">
+        <span class="label">Play</span>
+        <span class="spinner"></span>
+      </button>
 
      <button id="muteBtn" class="mute-btn">
 
@@ -252,26 +287,45 @@ const audio=document.getElementById("audio");
 
 /* PLAY */
 const playBtn=document.getElementById("playBtn");
+const playLabel=playBtn.querySelector(".label");
 
 playBtn.onclick=async(e)=>{
   ripple(e,playBtn);
 
   if(audio.paused){
+    playBtn.classList.add("loading");
+    playLabel.textContent="Loading";
+
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
     await new Promise(r=>setTimeout(r,150));
     audio.src=streamURL+"?t="+Date.now();
     audio.load();
-    await audio.play();
-    playBtn.textContent="Stop";
+
+    audio.play().catch(()=>{
+      playBtn.classList.remove("loading");
+      playLabel.textContent="Play";
+    });
+
   }else{
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
-    playBtn.textContent="Play";
+    playBtn.classList.remove("loading");
+    playLabel.textContent="Play";
   }
 };
+
+audio.addEventListener("playing",()=>{
+  playBtn.classList.remove("loading");
+  playLabel.textContent="Stop";
+});
+
+audio.addEventListener("error",()=>{
+  playBtn.classList.remove("loading");
+  playLabel.textContent="Play";
+});
 
 /* AUTO RECONNECT */
 audio.addEventListener("error",()=>{
